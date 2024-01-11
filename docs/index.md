@@ -1,16 +1,17 @@
 ---
+layout: home
+
 hero:
-  name: VitePress
-  text: Vite & Vue powered static site generator.
-  tagline: Lorem ipsum...
+  name: 专注前端
+  text: ES6, JavaScript, typyscript, vue2, vue3, react, HTML技术学习。
   image:
-    src: /logo.png
+    src: /logo.webp
     alt: VitePress
   actions:
     - theme: brand
-      text: Get Started
-      link: /guide/what-is-vitepress
+      text: 项目地址
+      link: https://github.com/lpw94/my-vuepress
     - theme: alt
-      text: View on GitHub
-      link: https://github.com/vuejs/vitepress
+      text: GitHub主页
+      link: https://github.com/lpw94
 ---
