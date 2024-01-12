@@ -24,48 +24,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 构建工作
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 # 如果未启用 lastUpdated，则不需要
-      # - uses: pnpm/action-setup@v2 # 如果使用 pnpm，请取消注释
-      # - uses: oven-sh/setup-bun@v1 # 如果使用 Bun，请取消注释
-      - name: Setup Node
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-          cache: npm # 或 pnpm / yarn
-      - name: Build with VitePress
-        run: |
-          npm install
-          npm run docs:build
-          touch docs/.vitepress/dist/.nojekyll
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
-        with:
-          path: docs/.vitepress/dist
-
-  # 部署工作
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    name: Deploy
-    steps:
-      # - name: Deploy to GitHub Pages
-      #   id: deployment
-      #   uses: actions/deploy-pages@v2
-      # 部署到 GitHub Pages
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          publish_dir: docs/.vitepress/dist
-          external_repository: lpw94/lpw94.github.io
-          publish_branch: master
-          cname: woge
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@lpw94.github.com'
+  build-and-deploy:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - name: Use Node.js
+          uses: actions/setup-node@v3
+          with:
+            node-version: '20'
+        - run: node -v
+        - run: npm install
+        - run: npm run docs:build
+        # 部署到 GitHub Pages
+        - name: Deploy
+          uses: peaceiris/actions-gh-pages@v3
+          with:
+            personal_token: ${{ secrets.PERSONAL_TOKEN }}
+            publish_dir: docs/.vitepress/dist
+            external_repository: lpw94/lpw94.github.io
+            publish_branch: main
+            cname: woge
+            user_name: 'github-actions[bot]'
+            user_email: 'github-actions[bot]@lpw94.github.com'
