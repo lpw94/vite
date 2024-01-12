@@ -19,9 +19,9 @@
 <p></p>
 <p>技能特长</p>
 <p></p>
-<p>1、精通HTML+CSS进行静态页面布局，熟练掌握HTML5和CSS3开发页面2、精通JavaScript+jQuery，进行BOM和DOM操作实现网页功能</p>
+<p>1、精通HTML+CSS进行静态页面布局，熟练掌握HTML5和CSS3开发页面2、熟练使用JavaScript，进行BOM和DOM操作实现网页功能</p>
 <p>3、熟练掌握Ajax和axios完成前后台交互</p>
-<p>4、熟练Vue、Angular框架进行开发</p>
+<p>4、熟练Vue、React框架进行开发</p>
 <p>5、熟悉Swiper、Bootstrap等常用插件构建页面</p>
 <p>6、了解Node.js、webpack</p>
 <p>7、了解微信小程序</p>
