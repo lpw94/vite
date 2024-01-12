@@ -42,7 +42,7 @@ jobs:
             personal_token: ${{ secrets.PERSONAL_TOKEN }}
             publish_dir: docs/.vitepress/dist
             external_repository: lpw94/lpw94.github.io
-            publish_branch: main
+            publish_branch: master
             cname: woge
             user_name: 'github-actions[bot]'
             user_email: 'github-actions[bot]@lpw94.github.com'
