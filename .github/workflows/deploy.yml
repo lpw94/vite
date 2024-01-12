@@ -63,7 +63,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v3
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          publish_dir: docs/.vuepress/dist
+          publish_dir: docs/.vitepress/dist
           external_repository: lpw94/lpw94.github.io
           publish_branch: master
           cname: woge
