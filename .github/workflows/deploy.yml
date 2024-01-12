@@ -39,18 +39,40 @@ jobs:
         with:
           node-version: 20
           cache: npm # 或 pnpm / yarn
-      - run: |
-         node -v
-         npm install
-         npm run docs:build
-      # 部署到 GitHub Pages
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+          
+      - name: Install dependencies
+        run: |
+          npm ci
+          node -v
+          npm install
+      - name: Build with VitePress
+        run: |
+          npm run docs:build
+          touch docs/.vitepress/dist/.nojekyll
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v2
         with:
-          personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          publish_dir: docs/.vuepress/dist
-          external_repository: lpw94/lpw94.github.io
-          publish_branch: master
-          cname: woge
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@lpw94.github.com'
+          path: docs/.vitepress/dist
+  # 部署工作
+  deploy:
+    environment:
+      name: github-pages
+      url: lpw94/lpw94.github.io
+    needs: build
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v2
+      # 部署到 GitHub Pages
+      # - name: Deploy
+      #   uses: peaceiris/actions-gh-pages@v3
+      #   with:
+      #     personal_token: 
+      #     publish_dir: docs/.vuepress/dist
+      #     external_repository: lpw94/lpw94.github.io
+      #     publish_branch: master
+      #     cname: woge
+      #     user_name: 'github-actions[bot]'
+      #     user_email: 'github-actions[bot]@lpw94.github.com'
