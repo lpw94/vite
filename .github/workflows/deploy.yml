@@ -39,10 +39,7 @@ jobs:
         with:
           node-version: 20
           cache: npm # 或 pnpm / yarn
-      - name: Setup Pages
-        uses: peaceiris/actions-gh-pages@v3
-      - name: Install dependencies
-        run: |
+      - run: |
          node -v
          npm install
          npm run docs:build
