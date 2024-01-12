@@ -2545,8 +2545,6 @@ function hasPropsChanged(prevProps, nextProps, emitsOptions) {
   return false;
 }
 function updateHOCHostEl({ vnode, parent }, el) {
-  if (!el)
-    return;
   while (parent) {
     const root = parent.subTree;
     if (root.suspense && root.suspense.activeBranch === vnode) {
@@ -2636,6 +2634,10 @@ var SuspenseImpl = {
         rendererInternals
       );
     } else {
+      if (parentSuspense && parentSuspense.deps > 0) {
+        n2.suspense = n1.suspense;
+        return;
+      }
       patchSuspense(
         n1,
         n2,
@@ -3185,7 +3187,12 @@ function queueEffectWithSuspense(fn, suspense) {
 function setActiveBranch(suspense, branch) {
   suspense.activeBranch = branch;
   const { vnode, parentComponent } = suspense;
-  const el = vnode.el = branch.el;
+  let el = branch.el;
+  while (!el && branch.component) {
+    branch = branch.component.subTree;
+    el = branch.el;
+  }
+  vnode.el = el;
   if (parentComponent && parentComponent.subTree === vnode) {
     parentComponent.vnode.el = el;
     updateHOCHostEl(parentComponent, el);
@@ -3430,14 +3437,9 @@ function instanceWatch(source, value, options) {
     cb = value.handler;
     options = value;
   }
-  const cur = currentInstance;
-  setCurrentInstance(this);
+  const reset = setCurrentInstance(this);
   const res = doWatch(getter, cb.bind(publicThis), options);
-  if (cur) {
-    setCurrentInstance(cur);
-  } else {
-    unsetCurrentInstance();
-  }
+  reset();
   return res;
 }
 function createPathGetter(ctx, path) {
@@ -3488,12 +3490,11 @@ function validateDirectiveName(name) {
   }
 }
 function withDirectives(vnode, directives) {
-  const internalInstance = currentRenderingInstance;
-  if (internalInstance === null) {
+  if (currentRenderingInstance === null) {
     warn$1(`withDirectives can only be used inside render functions.`);
     return vnode;
   }
-  const instance = getExposeProxy(internalInstance) || internalInstance.proxy;
+  const instance = getExposeProxy(currentRenderingInstance) || currentRenderingInstance.proxy;
   const bindings = vnode.dirs || (vnode.dirs = []);
   for (let i = 0; i < directives.length; i++) {
     let [dir, value, arg, modifiers = EMPTY_OBJ] = directives[i];
@@ -4272,9 +4273,9 @@ function injectHook(type, hook, target = currentInstance, prepend = false) {
         return;
       }
       pauseTracking();
-      setCurrentInstance(target);
+      const reset = setCurrentInstance(target);
       const res = callWithAsyncErrorHandling(hook, target, type, args);
-      unsetCurrentInstance();
+      reset();
       resetTracking();
       return res;
     });
@@ -4720,58 +4721,6 @@ function useSlots() {
 }
 function useAttrs() {
   return getContext().attrs;
-}
-function useModel(props, name, options = EMPTY_OBJ) {
-  const i = getCurrentInstance();
-  if (!i) {
-    warn$1(`useModel() called without active instance.`);
-    return ref();
-  }
-  if (!i.propsOptions[0][name]) {
-    warn$1(`useModel() called with prop "${name}" which is not declared.`);
-    return ref();
-  }
-  const camelizedName = camelize(name);
-  const hyphenatedName = hyphenate(name);
-  const res = customRef((track2, trigger2) => {
-    let localValue;
-    watchSyncEffect(() => {
-      const propValue = props[name];
-      if (hasChanged(localValue, propValue)) {
-        localValue = propValue;
-        trigger2();
-      }
-    });
-    return {
-      get() {
-        track2();
-        return options.get ? options.get(localValue) : localValue;
-      },
-      set(value) {
-        const rawProps = i.vnode.props;
-        if (!(rawProps && // check if parent has passed v-model
-        (name in rawProps || camelizedName in rawProps || hyphenatedName in rawProps) && (`onUpdate:${name}` in rawProps || `onUpdate:${camelizedName}` in rawProps || `onUpdate:${hyphenatedName}` in rawProps)) && hasChanged(value, localValue)) {
-          localValue = value;
-          trigger2();
-        }
-        i.emit(`update:${name}`, options.set ? options.set(value) : value);
-      }
-    };
-  });
-  const modifierKey = name === "modelValue" ? "modelModifiers" : `${name}Modifiers`;
-  res[Symbol.iterator] = () => {
-    let i2 = 0;
-    return {
-      next() {
-        if (i2 < 2) {
-          return { value: i2++ ? props[modifierKey] || {} : res, done: false };
-        } else {
-          return { done: true };
-        }
-      }
-    };
-  };
-  return res;
 }
 function getContext() {
   const i = getCurrentInstance();
@@ -5653,12 +5602,12 @@ function resolvePropValue(options, props, key, value, instance, isAbsent) {
         if (key in propsDefaults) {
           value = propsDefaults[key];
         } else {
-          setCurrentInstance(instance);
+          const reset = setCurrentInstance(instance);
           value = propsDefaults[key] = defaultValue.call(
             null,
             props
           );
-          unsetCurrentInstance();
+          reset();
         }
       } else {
         value = defaultValue;
@@ -6554,29 +6503,39 @@ function propHasMismatch(el, key, clientValue, vnode) {
   let actual;
   let expected;
   if (key === "class") {
-    actual = toClassSet(el.getAttribute("class") || "");
-    expected = toClassSet(normalizeClass(clientValue));
-    if (!isSetEqual(actual, expected)) {
+    actual = el.getAttribute("class");
+    expected = normalizeClass(clientValue);
+    if (!isSetEqual(toClassSet(actual || ""), toClassSet(expected))) {
       mismatchType = mismatchKey = `class`;
     }
   } else if (key === "style") {
-    actual = toStyleMap(el.getAttribute("style") || "");
-    expected = toStyleMap(
-      isString(clientValue) ? clientValue : stringifyStyle(normalizeStyle(clientValue))
-    );
+    actual = el.getAttribute("style");
+    expected = isString(clientValue) ? clientValue : stringifyStyle(normalizeStyle(clientValue));
+    const actualMap = toStyleMap(actual);
+    const expectedMap = toStyleMap(expected);
     if (vnode.dirs) {
       for (const { dir, value } of vnode.dirs) {
         if (dir.name === "show" && !value) {
-          expected.set("display", "none");
+          expectedMap.set("display", "none");
         }
       }
     }
-    if (!isMapEqual(actual, expected)) {
+    if (!isMapEqual(actualMap, expectedMap)) {
       mismatchType = mismatchKey = "style";
     }
   } else if (el instanceof SVGElement && isKnownSvgAttr(key) || el instanceof HTMLElement && (isBooleanAttr(key) || isKnownHtmlAttr(key))) {
-    actual = el.hasAttribute(key) ? el.getAttribute(key) : key in el ? el[key] : "";
-    expected = isBooleanAttr(key) ? includeBooleanAttr(clientValue) ? "" : false : clientValue == null ? "" : String(clientValue);
+    if (isBooleanAttr(key)) {
+      actual = el.hasAttribute(key);
+      expected = includeBooleanAttr(clientValue);
+    } else {
+      if (el.hasAttribute(key)) {
+        actual = el.getAttribute(key);
+      } else {
+        const serverValue = el[key];
+        actual = isObject(serverValue) || serverValue == null ? "" : String(serverValue);
+      }
+      expected = isObject(clientValue) || clientValue == null ? "" : String(clientValue);
+    }
     if (actual !== expected) {
       mismatchType = `attribute`;
       mismatchKey = key;
@@ -6584,15 +6543,15 @@ function propHasMismatch(el, key, clientValue, vnode) {
   }
   if (mismatchType) {
     const format = (v) => v === false ? `(not rendered)` : `${mismatchKey}="${v}"`;
-    warn$1(
-      `Hydration ${mismatchType} mismatch on`,
-      el,
-      `
+    const preSegment = `Hydration ${mismatchType} mismatch on`;
+    const postSegment = `
   - rendered on server: ${format(actual)}
   - expected on client: ${format(expected)}
   Note: this mismatch is check-only. The DOM will not be rectified in production due to performance overhead.
-  You should fix the source of the mismatch.`
-    );
+  You should fix the source of the mismatch.`;
+    {
+      warn$1(preSegment, el, postSegment);
+    }
     return true;
   }
   return false;
@@ -8961,14 +8920,7 @@ function createComponentInstance(vnode, parent, suspense) {
   return instance;
 }
 var currentInstance = null;
-var getCurrentInstance = () => {
-  if (isInComputedGetter) {
-    warn$1(
-      `getCurrentInstance() called inside a computed getter. This is incorrect usage as computed getters are not guaranteed to be executed with an active component instance. If you are using a composable inside a computed getter, move it ouside to the setup scope.`
-    );
-  }
-  return currentInstance || currentRenderingInstance;
-};
+var getCurrentInstance = () => currentInstance || currentRenderingInstance;
 var internalSetCurrentInstance;
 var setInSSRSetupState;
 {
@@ -8995,8 +8947,13 @@ var setInSSRSetupState;
   );
 }
 var setCurrentInstance = (instance) => {
+  const prev = currentInstance;
   internalSetCurrentInstance(instance);
   instance.scope.on();
+  return () => {
+    instance.scope.off();
+    internalSetCurrentInstance(prev);
+  };
 };
 var unsetCurrentInstance = () => {
   currentInstance && currentInstance.scope.off();
@@ -9058,7 +9015,7 @@ function setupStatefulComponent(instance, isSSR) {
   const { setup } = Component;
   if (setup) {
     const setupContext = instance.setupContext = setup.length > 1 ? createSetupContext(instance) : null;
-    setCurrentInstance(instance);
+    const reset = setCurrentInstance(instance);
     pauseTracking();
     const setupResult = callWithErrorHandling(
       setup,
@@ -9070,7 +9027,7 @@ function setupStatefulComponent(instance, isSSR) {
       ]
     );
     resetTracking();
-    unsetCurrentInstance();
+    reset();
     if (isPromise(setupResult)) {
       setupResult.then(unsetCurrentInstance, unsetCurrentInstance);
       if (isSSR) {
@@ -9166,13 +9123,13 @@ function finishComponentSetup(instance, isSSR, skipOptions) {
     }
   }
   if (__VUE_OPTIONS_API__ && true) {
-    setCurrentInstance(instance);
+    const reset = setCurrentInstance(instance);
     pauseTracking();
     try {
       applyOptions(instance);
     } finally {
       resetTracking();
-      unsetCurrentInstance();
+      reset();
     }
   }
   if (!Component.render && instance.render === NOOP && !isSSR) {
@@ -9312,27 +9269,61 @@ function formatComponentName(instance, Component, isRoot = false) {
 function isClassComponent(value) {
   return isFunction(value) && "__vccOpts" in value;
 }
-var isInComputedGetter = false;
-function wrapComputedGetter(getter) {
-  return () => {
-    isInComputedGetter = true;
-    try {
-      return getter();
-    } finally {
-      isInComputedGetter = false;
-    }
-  };
-}
 var computed2 = (getterOrOptions, debugOptions) => {
-  if (true) {
-    if (isFunction(getterOrOptions)) {
-      getterOrOptions = wrapComputedGetter(getterOrOptions);
-    } else {
-      getterOrOptions.get = wrapComputedGetter(getterOrOptions.get);
-    }
-  }
   return computed(getterOrOptions, debugOptions, isInSSRComponentSetup);
 };
+function useModel(props, name, options = EMPTY_OBJ) {
+  const i = getCurrentInstance();
+  if (!i) {
+    warn$1(`useModel() called without active instance.`);
+    return ref();
+  }
+  if (!i.propsOptions[0][name]) {
+    warn$1(`useModel() called with prop "${name}" which is not declared.`);
+    return ref();
+  }
+  const camelizedName = camelize(name);
+  const hyphenatedName = hyphenate(name);
+  const res = customRef((track2, trigger2) => {
+    let localValue;
+    watchSyncEffect(() => {
+      const propValue = props[name];
+      if (hasChanged(localValue, propValue)) {
+        localValue = propValue;
+        trigger2();
+      }
+    });
+    return {
+      get() {
+        track2();
+        return options.get ? options.get(localValue) : localValue;
+      },
+      set(value) {
+        const rawProps = i.vnode.props;
+        if (!(rawProps && // check if parent has passed v-model
+        (name in rawProps || camelizedName in rawProps || hyphenatedName in rawProps) && (`onUpdate:${name}` in rawProps || `onUpdate:${camelizedName}` in rawProps || `onUpdate:${hyphenatedName}` in rawProps)) && hasChanged(value, localValue)) {
+          localValue = value;
+          trigger2();
+        }
+        i.emit(`update:${name}`, options.set ? options.set(value) : value);
+      }
+    };
+  });
+  const modifierKey = name === "modelValue" ? "modelModifiers" : `${name}Modifiers`;
+  res[Symbol.iterator] = () => {
+    let i2 = 0;
+    return {
+      next() {
+        if (i2 < 2) {
+          return { value: i2++ ? props[modifierKey] || {} : res, done: false };
+        } else {
+          return { done: true };
+        }
+      }
+    };
+  };
+  return res;
+}
 function h(type, propsOrChildren, children) {
   const l = arguments.length;
   if (l === 2) {
@@ -9555,7 +9546,7 @@ function isMemoSame(cached, memo) {
   }
   return true;
 }
-var version = "3.4.6";
+var version = "3.4.10";
 var warn2 = true ? warn$1 : NOOP;
 var ErrorTypeStrings = ErrorTypeStrings$1;
 var devtools = true ? devtools$1 : void 0;
@@ -10035,6 +10026,7 @@ function setVarsOnNode(el, vars) {
 }
 function patchStyle(el, prev, next) {
   const style = el.style;
+  const currentDisplay = style.display;
   const isCssString = isString(next);
   if (next && !isCssString) {
     if (prev && !isString(prev)) {
@@ -10048,7 +10040,6 @@ function patchStyle(el, prev, next) {
       setStyle(style, key, next[key]);
     }
   } else {
-    const currentDisplay = style.display;
     if (isCssString) {
       if (prev !== next) {
         const cssVarText = style[CSS_VAR_TEXT];
@@ -10060,9 +10051,9 @@ function patchStyle(el, prev, next) {
     } else if (prev) {
       el.removeAttribute("style");
     }
-    if (vShowOldKey in el) {
-      style.display = currentDisplay;
-    }
+  }
+  if (vShowOldKey in el) {
+    style.display = currentDisplay;
   }
 }
 var semicolonRE = /[^\\];\s*$/;
@@ -11223,7 +11214,6 @@ export {
   withDefaults,
   useSlots,
   useAttrs,
-  useModel,
   mergeDefaults,
   mergeModels,
   createPropsRestProxy,
@@ -11256,6 +11246,7 @@ export {
   registerRuntimeCompiler,
   isRuntimeOnly,
   computed2 as computed,
+  useModel,
   h,
   initCustomFormatter,
   withMemo,
@@ -11293,10 +11284,41 @@ export {
 };
 /*! Bundled license information:
 
+@vue/shared/dist/shared.esm-bundler.js:
+  (**
+  * @vue/shared v3.4.10
+  * (c) 2018-present Yuxi (Evan) You and Vue contributors
+  * @license MIT
+  **)
+
+@vue/reactivity/dist/reactivity.esm-bundler.js:
+  (**
+  * @vue/reactivity v3.4.10
+  * (c) 2018-present Yuxi (Evan) You and Vue contributors
+  * @license MIT
+  **)
+
 @vue/runtime-core/dist/runtime-core.esm-bundler.js:
+  (**
+  * @vue/runtime-core v3.4.10
+  * (c) 2018-present Yuxi (Evan) You and Vue contributors
+  * @license MIT
+  **)
   (*! #__NO_SIDE_EFFECTS__ *)
 
 @vue/runtime-dom/dist/runtime-dom.esm-bundler.js:
+  (**
+  * @vue/runtime-dom v3.4.10
+  * (c) 2018-present Yuxi (Evan) You and Vue contributors
+  * @license MIT
+  **)
   (*! #__NO_SIDE_EFFECTS__ *)
+
+vue/dist/vue.runtime.esm-bundler.js:
+  (**
+  * vue v3.4.10
+  * (c) 2018-present Yuxi (Evan) You and Vue contributors
+  * @license MIT
+  **)
 */
-//# sourceMappingURL=chunk-G6GUGD5K.js.map
+//# sourceMappingURL=chunk-NQRX5CC2.js.map
