@@ -41,8 +41,8 @@ jobs:
           cache: npm # 或 pnpm / yarn
       - name: Build with VitePress
         run: |
-          run: npm install # 或 pnpm install / yarn install / bun install
-          npm run docs:build # 或 pnpm docs:build / yarn docs:build / bun run docs:build
+          npm install
+          npm run docs:build
           touch docs/.vitepress/dist/.nojekyll
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v2
