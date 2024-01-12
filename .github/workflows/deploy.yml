@@ -42,7 +42,9 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v3
       - name: Install dependencies
-        run: npm ci # 或 pnpm install / yarn install / bun install
+        run: |
+         node -v
+         npm install
       - name: Build with VitePress
         run: |
           npm run docs:build
@@ -52,7 +54,7 @@ jobs:
         with:
           path: docs/.vitepress/dist
 
-  # 部署工作
+  # 部署工作 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
   deploy:
     environment:
       name: github-pages
